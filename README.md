@@ -1,6 +1,10 @@
 # EdgeOS
 A tiny x86 OS kernel, including basic terminal
 
+
+![screenshot](./screenshot.png)
+
+
 - No POSIX standard, not Unix-like.
 - Hobbyist operating system kernel.
 - ISO build support.
