@@ -1,0 +1,26 @@
+// MEMFS (disabled)
+void initFileSystemInMemory() {
+    custom_strcpy(root_directory.name, "root");
+    root_directory.file_count = 0;
+}
+
+void createFileInMemory(char *name, char *content) {
+    if (root_directory.file_count < MAX_FILE_COUNT) {
+        File newFile;
+        custom_strcpy(newFile.name, name);
+        newFile.size = strlen(content);
+        custom_strcpy(newFile.content, content);
+        newFile.content[MAX_FILE_CONTENT_LENGTH - 1] = '\0';
+
+        root_directory.files[root_directory.file_count++] = newFile;
+        printf("File '%s' created successfully.\n", name);
+    } else {
+        printf("File system full. Cannot create more files.\n");
+    }
+}
+
+void listFilesInMemory() {
+    for (int i = 0; i < root_directory.file_count; ++i) {
+        printf("%s\n", root_directory.files[i].name);
+    }
+}
