@@ -2,7 +2,7 @@
 #define FRAMEBUFFER_H
 
 #include "multiboot.h"
-#include "stdint-gcc.h"
+#include <stdint.h>
 
 // Function declarations
 void init_tty(multiboot_info_t *mbi, uint32_t fg, uint32_t bg);

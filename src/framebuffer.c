@@ -1,7 +1,9 @@
 #include "multiboot.h"
-#include "stdint-gcc.h"
+#include <stdint.h>
 #include "ctypes.h"
 #include "qemu.h"
+#include "framebuffer.h"
+#include "font8x8_basic.h"
 
 
 multiboot_uint32_t* framebuffer_buffer;
@@ -46,18 +48,74 @@ void framebuffer_putpixel(uint32_t x, uint32_t y, uint32_t color){
     *(uint32_t*)(x + y * framebuffer_width + framebuffer_buffer) = color;
 }
 
+extern char font8x8_basic[128][8];
+void framebuffer_clscr(uint32_t color);
+
+static uint32_t fb_cols() {
+    return framebuffer_width / FONT_WIDTH;
+}
+
+static uint32_t fb_rows() {
+    return framebuffer_height / FONT_HEIGHT;
+}
+
 void framebuffer_putchar(char ch, uint32_t color){
-  //
+    if(ch == '\n'){
+        cur_x = 0;
+        cur_y++;
+    } else if(ch == '\t'){
+        for(int i=0;i<4;i++)
+            framebuffer_putchar(' ', color);
+        return;
+    } else {
+        unsigned char c = (unsigned char)ch;
+        if(c >= 128)
+            c = '?';
+        for(int row=0; row<FONT_HEIGHT; row++){
+            unsigned char bits = font8x8_basic[c][row];
+            for(int col=0; col<FONT_WIDTH; col++){
+                uint32_t px = (bits & (1 << col)) ? color : bg_color;
+                framebuffer_putpixel(cur_x * FONT_WIDTH + (FONT_WIDTH-1-col),
+                                    cur_y * FONT_HEIGHT + row, px);
+            }
+        }
+        cur_x++;
+    }
+
+    if(cur_x >= fb_cols()){
+        cur_x = 0;
+        cur_y++;
+    }
+    if(cur_y >= fb_rows()){
+        framebuffer_clscr(bg_color);
+    }
 }
 
 void framebuffer_backspace(uint32_t color){
-    cur_x--;
-    framebuffer_putchar(219, color);
-    cur_x--;
+    if(cur_x > 0){
+        cur_x--;
+    } else if(cur_y > 0){
+        cur_y--;
+        cur_x = fb_cols() - 1;
+    } else {
+        return;
+    }
+    for(int y=0; y<FONT_HEIGHT; y++){
+        for(int x=0; x<FONT_WIDTH; x++){
+            framebuffer_putpixel(cur_x * FONT_WIDTH + x,
+                                cur_y * FONT_HEIGHT + y,
+                                bg_color);
+        }
+    }
 }
 
 void framebuffer_back(){
-    cur_x--;
+    if(cur_x > 0){
+        cur_x--;
+    } else if(cur_y > 0){
+        cur_y--;
+        cur_x = fb_cols() - 1;
+    }
 }
 
 void framebuffer_putstr(char *str, uint32_t color){

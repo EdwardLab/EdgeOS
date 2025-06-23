@@ -7,7 +7,7 @@
 #include "io_ports.h"
 #include "framebuffer.h"
 #include "multiboot.h"
-#include "stdint-gcc.h"
+#include <stdint.h>
 #include "ctypes.h"
 #include "qemu.h"
 #include "romfont.h"
@@ -17,6 +17,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "stdio.h"
+
+multiboot_info_t* g_mbi;
 
 #define BRAND_QEMU 1
 #define BRAND_VBOX 2
@@ -362,6 +364,7 @@ void main_loop() {
     }
 }
 
-void kmain() {
+void kmain(multiboot_info_t *mbi) {
+    g_mbi = mbi;
     boot();
 }

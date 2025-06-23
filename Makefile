@@ -39,7 +39,7 @@ ISO_DIR = $(OUT)/isodir
 
 OBJECTS = $(ASM_OBJ)/entry.o $(ASM_OBJ)/load_gdt.o\
           $(ASM_OBJ)/load_idt.o $(ASM_OBJ)/exception.o $(ASM_OBJ)/irq.o\
-          $(OBJ)/io_ports.o $(OBJ)/vga.o\
+          $(OBJ)/io_ports.o $(OBJ)/vga.o $(OBJ)/framebuffer.o\
           $(OBJ)/string.o $(OBJ)/console.o\
           $(OBJ)/gdt.o $(OBJ)/idt.o $(OBJ)/isr.o $(OBJ)/8259_pic.o\
           $(OBJ)/keyboard.o\
@@ -47,17 +47,22 @@ OBJECTS = $(ASM_OBJ)/entry.o $(ASM_OBJ)/load_gdt.o\
 		  $(OBJ)/stdio.o\
 		  $(OBJ)/fs.o
 
-all: $(OBJECTS)
-	@printf "[ linking... ]\n"
-	$(LD) $(LD_FLAGS) -o $(TARGET) $(OBJECTS)
-	grub-file --is-x86-multiboot $(TARGET)
-	@printf "\n"
-	@printf "[ building ISO... ]\n"
-	$(MKDIR) $(ISO_DIR)/boot/grub
-	$(CP) $(TARGET) $(ISO_DIR)/boot/
-	$(CP) $(CONFIG)/grub.cfg $(ISO_DIR)/boot/grub/
-	$(GRUB) -o $(TARGET_ISO) $(ISO_DIR)
-	rm -f $(TARGET)
+all: prepare $(OBJECTS)
+	       @printf "[ linking... ]\n"
+	       $(LD) $(LD_FLAGS) -o $(TARGET) $(OBJECTS)
+	       grub-file --is-x86-multiboot $(TARGET)
+	       @printf "\n"
+	       @printf "[ building ISO... ]\n"
+	       $(MKDIR) $(ISO_DIR)/boot/grub
+	       $(CP) $(TARGET) $(ISO_DIR)/boot/
+	       $(CP) $(CONFIG)/grub.cfg $(ISO_DIR)/boot/grub/
+	       $(GRUB) -o $(TARGET_ISO) $(ISO_DIR)
+	       rm -f $(TARGET)
+
+prepare:
+	$(MKDIR) $(OBJ) $(ASM_OBJ) $(OUT)
+
+.PHONY: prepare
 
 $(ASM_OBJ)/entry.o : $(ASM_SRC)/entry.asm
 	@printf "[ $(ASM_SRC)/entry.asm ]\n"
@@ -92,6 +97,11 @@ $(OBJ)/io_ports.o : $(SRC)/io_ports.c
 $(OBJ)/vga.o : $(SRC)/vga.c
 	@printf "[ $(SRC)/vga.c ]\n"
 	$(CC) $(CFLAGS) -c $(SRC)/vga.c -o $(OBJ)/vga.o
+	@printf "\n"
+
+$(OBJ)/framebuffer.o : $(SRC)/framebuffer.c
+	@printf "[ $(SRC)/framebuffer.c ]\n"
+	$(CC) $(CFLAGS) -c $(SRC)/framebuffer.c -o $(OBJ)/framebuffer.o
 	@printf "\n"
 
 $(OBJ)/string.o : $(SRC)/string.c

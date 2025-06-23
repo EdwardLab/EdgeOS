@@ -10,7 +10,7 @@
 #include "io_ports.h"
 #include "framebuffer.h"
 #include "multiboot.h"
-#include "stdint-gcc.h"
+#include <stdint.h>
 #include "ctypes.h"
 #include "qemu.h"
 #include "romfont.h"
