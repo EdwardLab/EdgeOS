@@ -38,11 +38,13 @@ TARGET_ISO = $(OUT)/edgeos.iso
 ISO_DIR = $(OUT)/isodir
 
 OBJECTS = $(ASM_OBJ)/entry.o $(ASM_OBJ)/load_gdt.o\
-          $(ASM_OBJ)/load_idt.o $(ASM_OBJ)/exception.o $(ASM_OBJ)/irq.o\
-          $(OBJ)/io_ports.o $(OBJ)/vga.o\
-          $(OBJ)/string.o $(OBJ)/console.o\
-          $(OBJ)/gdt.o $(OBJ)/idt.o $(OBJ)/isr.o $(OBJ)/8259_pic.o\
-          $(OBJ)/keyboard.o\
+	  $(ASM_OBJ)/load_idt.o $(ASM_OBJ)/exception.o $(ASM_OBJ)/irq.o\
+	  $(OBJ)/io_ports.o $(OBJ)/vga.o\
+	  $(OBJ)/string.o $(OBJ)/console.o\
+	  $(OBJ)/gdt.o $(OBJ)/idt.o $(OBJ)/isr.o $(OBJ)/8259_pic.o\
+	  $(OBJ)/keyboard.o\
+          $(OBJ)/framebuffer.o\
+          $(OBJ)/font8x8_basic.o\
           $(OBJ)/kernel.o\
 		  $(OBJ)/stdio.o\
 		  $(OBJ)/fs.o
@@ -127,6 +129,16 @@ $(OBJ)/8259_pic.o : $(SRC)/8259_pic.c
 $(OBJ)/keyboard.o : $(SRC)/keyboard.c
 	@printf "[ $(SRC)/keyboard.c ]\n"
 	$(CC) $(CFLAGS) -c $(SRC)/keyboard.c -o $(OBJ)/keyboard.o
+	@printf "\n"
+
+$(OBJ)/framebuffer.o : $(SRC)/framebuffer.c
+	@printf "[ $(SRC)/framebuffer.c ]\n"
+	$(CC) $(CFLAGS) -c $(SRC)/framebuffer.c -o $(OBJ)/framebuffer.o
+	@printf "\n"
+
+$(OBJ)/font8x8_basic.o : $(SRC)/font8x8_basic.c
+	@printf "[ $(SRC)/font8x8_basic.c ]\n"
+	$(CC) $(CFLAGS) -c $(SRC)/font8x8_basic.c -o $(OBJ)/font8x8_basic.o
 	@printf "\n"
 
 $(OBJ)/kernel.o : $(SRC)/kernel.c

@@ -62,7 +62,9 @@ _start:
 
     ; Call the kernel main function
     extern kmain
-    call kmain    
+    push ebx
+    call kmain
+    add esp, 4
 
 halt:
     hlt
