@@ -2,6 +2,8 @@
 #include "stdint-gcc.h"
 #include "ctypes.h"
 #include "qemu.h"
+#include "font8x8_basic.h"
+#include "framebuffer.h"
 
 
 multiboot_uint32_t* framebuffer_buffer;
@@ -40,20 +42,51 @@ int init_framebuffer(multiboot_info_t* mbi){
     framebuffer_height = mbi->framebuffer_height;
     framebuffer_width = mbi->framebuffer_width;
   }
+  return 0;
 }
 
 void framebuffer_putpixel(uint32_t x, uint32_t y, uint32_t color){
-    *(uint32_t*)(x + y * framebuffer_width + framebuffer_buffer) = color;
+    if (x >= framebuffer_width || y >= framebuffer_height)
+        return;
+    framebuffer_buffer[y * framebuffer_width + x] = color;
 }
 
 void framebuffer_putchar(char ch, uint32_t color){
-  //
+    if (ch == '\n') {
+        cur_x = 0;
+        cur_y++;
+        return;
+    }
+    for (int row = 0; row < FONT_HEIGHT; row++) {
+        unsigned char bits = font8x8_basic[(unsigned char)ch][row];
+        for (int col = 0; col < FONT_WIDTH; col++) {
+            uint32_t pixel_color = (bits & (1 << col)) ? color : bg_color;
+            framebuffer_putpixel(cur_x * FONT_WIDTH + col,
+                                 cur_y * FONT_HEIGHT + row,
+                                 pixel_color);
+        }
+    }
+    cur_x++;
+    if (cur_x >= framebuffer_width / FONT_WIDTH) {
+        cur_x = 0;
+        cur_y++;
+    }
+    if (cur_y >= framebuffer_height / FONT_HEIGHT) {
+        cur_y = framebuffer_height / FONT_HEIGHT - 1;
+    }
 }
 
 void framebuffer_backspace(uint32_t color){
+    (void)color;
+    if (cur_x == 0) return;
     cur_x--;
-    framebuffer_putchar(219, color);
-    cur_x--;
+    for (int row = 0; row < FONT_HEIGHT; row++) {
+        for (int col = 0; col < FONT_WIDTH; col++) {
+            framebuffer_putpixel(cur_x * FONT_WIDTH + col,
+                                 cur_y * FONT_HEIGHT + row,
+                                 bg_color);
+        }
+    }
 }
 
 void framebuffer_back(){

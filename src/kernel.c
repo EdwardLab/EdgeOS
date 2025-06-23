@@ -173,11 +173,12 @@ void vim() {
     createFile(name, file_content);
 }
 
-void boot() {
+void boot(multiboot_info_t *mbi) {
     char buffer[255];
     gdt_init();
     idt_init();
 
+    init_tty(mbi, 0xFFFFFF, 0x000000);
     console_init(COLOR_WHITE, COLOR_BLUE);
     keyboard_init();
     printf("EdgeOS Operating System\n");
@@ -362,6 +363,6 @@ void main_loop() {
     }
 }
 
-void kmain() {
-    boot();
+void kmain(multiboot_info_t *mbi) {
+    boot(mbi);
 }
