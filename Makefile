@@ -38,12 +38,13 @@ TARGET_ISO = $(OUT)/edgeos.iso
 ISO_DIR = $(OUT)/isodir
 
 OBJECTS = $(ASM_OBJ)/entry.o $(ASM_OBJ)/load_gdt.o\
-          $(ASM_OBJ)/load_idt.o $(ASM_OBJ)/exception.o $(ASM_OBJ)/irq.o\
-          $(OBJ)/io_ports.o $(OBJ)/vga.o\
-          $(OBJ)/string.o $(OBJ)/console.o\
-          $(OBJ)/gdt.o $(OBJ)/idt.o $(OBJ)/isr.o $(OBJ)/8259_pic.o\
-          $(OBJ)/keyboard.o\
-          $(OBJ)/kernel.o\
+	  $(ASM_OBJ)/load_idt.o $(ASM_OBJ)/exception.o $(ASM_OBJ)/irq.o\
+	  $(OBJ)/io_ports.o $(OBJ)/vga.o\
+	  $(OBJ)/fb.o\
+	  $(OBJ)/string.o $(OBJ)/console.o\
+	  $(OBJ)/gdt.o $(OBJ)/idt.o $(OBJ)/isr.o $(OBJ)/8259_pic.o\
+	  $(OBJ)/keyboard.o\
+	  $(OBJ)/kernel.o\
 		  $(OBJ)/stdio.o\
 		  $(OBJ)/fs.o
 
@@ -92,6 +93,11 @@ $(OBJ)/io_ports.o : $(SRC)/io_ports.c
 $(OBJ)/vga.o : $(SRC)/vga.c
 	@printf "[ $(SRC)/vga.c ]\n"
 	$(CC) $(CFLAGS) -c $(SRC)/vga.c -o $(OBJ)/vga.o
+	@printf "\n"
+
+$(OBJ)/fb.o : $(SRC)/fb.c
+	@printf "[ $(SRC)/fb.c ]\n"
+	$(CC) $(CFLAGS) -c $(SRC)/fb.c -o $(OBJ)/fb.o
 	@printf "\n"
 
 $(OBJ)/string.o : $(SRC)/string.c
