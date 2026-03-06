@@ -1,0 +1,2 @@
+Welcome to EdgeOS Community!
+Getting started by type 'help'

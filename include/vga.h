@@ -52,5 +52,6 @@ void vga_set_cursor_pos(uint8 x, uint8 y);
  * by writing to CRT controller registers
  */
 void vga_disable_cursor();
+void vga_set_cursor_underline();
 
 #endif

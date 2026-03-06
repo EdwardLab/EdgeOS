@@ -1,23 +1,27 @@
 section .text
-    global load_gdt
+bits 64
 
+global load_gdt
 load_gdt:
-    mov eax, [esp + 4]  ; get gdt pointer
-    lgdt [eax]          ; load gdt
-
-    mov ax, 0x10    ; kernel data segment
+    lgdt [rdi]
+    mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     mov ss, ax
+    push qword 0x08
+    lea rax, [rel gdt_flush_ret]
+    push rax
+    retfq
 
-    cli             ; clear interrupts
-    mov	eax, cr0    ; set bit 0 in cr0 to enter protected mode
-    or eax, 1
-    mov	cr0, eax
-
-    jmp 0x08:far_jump   ; jump to far with code data segment
-far_jump:
+gdt_flush_ret:
     ret
 
+global load_tss
+load_tss:
+    mov ax, di
+    ltr ax
+    ret
+
+section .note.GNU-stack noalloc noexec nowrite progbits

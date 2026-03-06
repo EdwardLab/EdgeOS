@@ -1,43 +1,59 @@
 section .text
-    extern isr_irq_handler
+bits 64
 
-irq_handler:
-    pusha                 ; push all registers
-    mov ax, ds
-    push eax              ; save ds
+extern isr_irq_handler
 
-    mov ax, 0x10          ; load kernel data segment
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    push esp
-    call isr_irq_handler
-    pop esp
-
-    pop ebx                ; restore kernel data segment
-    mov ds, bx
-    mov es, bx
-    mov fs, bx
-    mov gs, bx
-
-    popa                ; restore all registers
-    add esp, 0x8        ; restore stack for erro no been pushed
-
-    sti                 ; re-enable interrupts
-    iret
-
-
-%macro IRQ 2
-  global irq_%1
-  irq_%1:
-    cli
-    push byte 0
-    push byte %2
-    jmp irq_handler
+%macro PUSH_GPRS 0
+    push r15
+    push r14
+    push r13
+    push r12
+    push r11
+    push r10
+    push r9
+    push r8
+    push rsi
+    push rdi
+    push rbp
+    push rdx
+    push rcx
+    push rbx
+    push rax
 %endmacro
 
+%macro POP_GPRS 0
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rbp
+    pop rdi
+    pop rsi
+    pop r8
+    pop r9
+    pop r10
+    pop r11
+    pop r12
+    pop r13
+    pop r14
+    pop r15
+%endmacro
+
+irq_common:
+    PUSH_GPRS
+    mov rdi, rsp
+    call isr_irq_handler
+    POP_GPRS
+    add rsp, 16
+    iretq
+
+%macro IRQ 2
+    global irq_%1
+irq_%1:
+    push qword 0
+    push qword %2
+    jmp irq_common
+%endmacro
 
 IRQ 0, 32
 IRQ 1, 33
@@ -56,4 +72,4 @@ IRQ 13, 45
 IRQ 14, 46
 IRQ 15, 47
 
-
+section .note.GNU-stack noalloc noexec nowrite progbits

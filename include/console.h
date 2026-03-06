@@ -1,36 +1,43 @@
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
-#include "vga.h"
+#include <stdint.h>
+#include "console_backend.h"
 
 #define MAXIMUM_PAGES  16
+#define SCROLL_UP      1
+#define SCROLL_DOWN    2
 
-#define SCROLL_UP     1
-#define SCROLL_DOWN   2
+#define COLOR_BLACK    0xFF000000u
+#define COLOR_BLUE     0xFF0000AAu
+#define COLOR_GREEN    0xFF00AA00u
+#define COLOR_WHITE    0xFFFFFFFFu
 
-void console_clear(VGA_COLOR_TYPE fore_color, VGA_COLOR_TYPE back_color);
+void console_set_backend(const console_backend_t* be);
 
-//initialize console
-void console_init(VGA_COLOR_TYPE fore_color, VGA_COLOR_TYPE back_color);
-void console_scroll(int line_count);
+void console_init(uint32_t fore_color, uint32_t back_color);
+void console_clear(uint32_t fore_color, uint32_t back_color);
+void console_scroll(int type);
+void console_gotoxy(uint16_t x, uint16_t y);
+
 void console_putchar(char ch);
-// revert back the printed character and add 0 to it
-void console_ungetchar();
-// revert back the printed character until n characters
-void console_ungetchar_bound(uint8 n);
-
-void console_gotoxy(uint16 x, uint16 y);
-
 void console_putstr(const char *str);
-void console_printf(const char *format, ...);
 
-// read string from console, but no backing
+void printf(const char *format, ...);
+void printf_color(uint32_t color, const char *format, ...);
+
+#define console_printf printf
+
+
+void console_ungetchar(void);
+void console_ungetchar_bound(uint8_t n);
+
+
 void getstr(char *buffer);
+void getstr_bound(char *buffer, uint8_t bound);
 
-// read string from console, and erase or go back util bound occurs
-void getstr_bound(char *buffer, uint8 bound);
-uint8 get_cursor_x();
-uint8 get_cursor_y();
 
-#endif
+uint8_t get_cursor_x(void);
+uint8_t get_cursor_y(void);
 
+#endif /* CONSOLE_H */

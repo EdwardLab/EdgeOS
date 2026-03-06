@@ -1,5 +1,5 @@
 #include "string.h"
-
+#include <stdint.h>
 #include "types.h"
 
 void *memset(void *dst, char c, uint32 n) {
@@ -17,14 +17,28 @@ void *memcpy(void *dst, const void *src, uint32 n) {
     return ret;
 }
 
-int memcmp(uint8 *s1, uint8 *s2, uint32 n) {
-    while (n--) {
-        if (*s1 != *s2)
-            return 0;
-        s1++;
-        s2++;
+
+void *memmove(void *dst, const void *src, uint32 n) {
+    uint8 *d = (uint8*)dst;
+    const uint8 *s = (const uint8*)src;
+    if (d == s || n == 0) return dst;
+    if (d < s) {
+        for (uint32 i = 0; i < n; i++) d[i] = s[i];
+    } else {
+        for (uint32 i = n; i > 0; i--) d[i - 1] = s[i - 1];
     }
-    return 1;
+    return dst;
+}
+
+int memcmp(const void *s1, const void *s2, uint32 n) {
+    const uint8 *a = (const uint8 *)s1;
+    const uint8 *b = (const uint8 *)s2;
+    while (n--) {
+        if (*a != *b) return (int)*a - (int)*b;
+        a++;
+        b++;
+    }
+    return 0;
 }
 
 int strlen(const char *s) {
@@ -92,38 +106,26 @@ char lower(char c) {
 }
 
 void itoa(char *buf, int base, int d) {
-    char *p = buf;
-    char *p1, *p2;
-    unsigned long ud = d;
-    int divisor = 10;
-
-    /* If %d is specified and D is minus, put ‘-’ in the head. */
-    if (base == 'd' && d < 0) {
-        *p++ = '-';
-        buf++;
-        ud = -d;
-    } else if (base == 'x')
-        divisor = 16;
-
-    /* Divide UD by DIVISOR until UD == 0. */
-    do {
-        int remainder = ud % divisor;
-        *p++ = (remainder < 10) ? remainder + '0' : remainder + 'a' - 10;
-    } while (ud /= divisor);
-
-    /* Terminate BUF. */
-    *p = 0;
-
-    /* Reverse BUF. */
-    p1 = buf;
-    p2 = p - 1;
-    while (p1 < p2) {
-        char tmp = *p1;
-        *p1 = *p2;
-        *p2 = tmp;
-        p1++;
-        p2--;
+    uint32_t u = (uint32_t)d;
+    int b = 10;
+    
+    if (base == 'x') b = 16;
+    else if (base == 'o') b = 8;
+    else if (base == 'd' && d < 0) {
+        *buf++ = '-';
+        u = (uint32_t)-d;
     }
+
+    char tmp[32];
+    int i = 0;
+    if (u == 0) tmp[i++] = '0';
+    while (u > 0) {
+        int r = u % b;
+        tmp[i++] = (r < 10) ? (r + '0') : (r - 10 + 'a');
+        u /= b;
+    }
+    while (i > 0) *buf++ = tmp[--i];
+    *buf = 0;
 }
 
 char *strstr(const char *in, const char *str) {
@@ -156,4 +158,22 @@ char *strncpy(char *dest, const char *src, size_t n) {
         dest[i] = '\0';
     }
     return dest;
+}
+
+int atoi(const char *s) {
+    int sign = 1;
+    int v = 0;
+    if (!s) return 0;
+    while (*s && isspace(*s)) s++;
+    if (*s == '-') {
+        sign = -1;
+        s++;
+    } else if (*s == '+') {
+        s++;
+    }
+    while (*s >= '0' && *s <= '9') {
+        v = v * 10 + (*s - '0');
+        s++;
+    }
+    return sign * v;
 }

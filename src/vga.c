@@ -50,3 +50,9 @@ void vga_disable_cursor() {
     outportb(0x3D5, 32);
 }
 
+void vga_set_cursor_underline() {
+    outportb(0x3D4, 0x0A);
+    outportb(0x3D5, 14);
+    outportb(0x3D4, 0x0B);
+    outportb(0x3D5, 15);
+}

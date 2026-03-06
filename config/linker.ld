@@ -1,44 +1,46 @@
+OUTPUT_FORMAT(elf64-x86-64)
 ENTRY(_start)
 
 SECTIONS
 {
-    __kernel_section_start = .;
-    .text 0x0100000 : {
-        __kernel_text_section_start = .;
-        *(.multiboot)
-        *(.text)
-        . = ALIGN(4096);
-        __kernel_text_section_end = .;
+    . = 0x08000000;
+    _kernel_start = .;
+
+    .multiboot2 : ALIGN(8)
+    {
+        KEEP(*(.multiboot2))
     }
 
-    .data : {
-        __kernel_data_section_start = .;
-        *(.data)
-        . = ALIGN(4096);
-        __kernel_data_section_end = .;
+    .bootstrap.text : ALIGN(4096)
+    {
+        *(.bootstrap.text)
     }
 
-    .rodata : {
-        __kernel_rodata_section_start = .;
-        *(.rodata)
-        __kernel_rodata_section_end = .;
+    .text : ALIGN(4096)
+    {
+        *(.text*)
     }
 
-    .bss : {
-        __kernel_bss_section_start = .;
-        *(.bss)
-        . = ALIGN(4096);
-        __kernel_bss_section_end = .;
+    .rodata : ALIGN(4096)
+    {
+        *(.rodata*)
     }
 
-    .page_tables 0x1000 : ALIGN(4096) {
-        . = ALIGN(4096);
-        __kernel_page_tables_start = .;
-        . += 4096 * 2;           /* 4 KB page directory + 4 KB first page table */
-        . = ALIGN(4096);
-        __kernel_page_tables_end = .;
+    .data : ALIGN(4096)
+    {
+        *(.data*)
     }
 
-    end = .; _end = .; __end = .;
-    __kernel_section_end = .;
+    .bss : ALIGN(4096)
+    {
+        *(COMMON)
+        *(.bss*)
+    }
+
+    .bootstrap.bss (NOLOAD) : ALIGN(4096)
+    {
+        *(.bootstrap.bss)
+    }
+
+    _kernel_end = .;
 }

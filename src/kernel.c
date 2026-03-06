@@ -1,367 +1,239 @@
-#include "kernel.h"
+#include "fb.h"
+#include "fb_console.h"
+#include "vga_console.h"
 #include "console.h"
-#include "string.h"
+#include "console_backend.h"
 #include "gdt.h"
 #include "idt.h"
 #include "keyboard.h"
-#include "io_ports.h"
-#include "framebuffer.h"
-#include "multiboot.h"
-#include "stdint-gcc.h"
-#include "ctypes.h"
-#include "qemu.h"
-#include "romfont.h"
-#include "fs/fs.h"
-
-#include <string.h>
-#include <stdint.h>
-#include <stdbool.h>
+#include "isr.h"
+#include "dev/dev.h"
+#include "vfs/vfs.h"
+#include "ext2/ext2.h"
+#include "ext4/ext4.h"
+#include "block/block.h"
+#include "sys/meminfo.h"
+#include "sys/boottime.h"
+#include "sys/bootlog.h"
+#include "sys/process.h"
+#include "sys/scheduler.h"
+#include "sys/syscall.h"
+#include "elf/elf_loader.h"
+#include "drivers/e1000.h"
+#include "drivers/usb.h"
+#include "net/lwip_stack.h"
 #include "stdio.h"
+#include "string.h"
+#include "io_ports.h"
 
-#define BRAND_QEMU 1
-#define BRAND_VBOX 2
+#include <stdint.h>
 
-#define VERSION "0.05"
-#define MAX_HISTORY 10
+volatile uint32_t g_timer_ticks;
+static const char *g_edge_version = "2.0.8+86_64";
+static int g_has_fb_console;
 
-#define MAX_FILENAME_LENGTH 20
-#define MAX_FILE_COUNT 100
-#define MAX_FILE_CONTENT_LENGTH 10000
+#define PIT_CMD_PORT 0x43
+#define PIT_CH0_PORT 0x40
+#define PIT_INPUT_HZ 1193182u
+#define KERNEL_TIMER_HZ 100u
 
-typedef struct {
-    char name[MAX_FILENAME_LENGTH];
-    int size;
-    char content[MAX_FILE_CONTENT_LENGTH];
-} File;
+static void pit_set_rate(uint32_t hz) {
+    uint32_t divisor;
+    if (hz == 0) hz = KERNEL_TIMER_HZ;
+    divisor = PIT_INPUT_HZ / hz;
+    if (divisor == 0) divisor = 1;
+    if (divisor > 0xFFFFu) divisor = 0xFFFFu;
+    outportb(PIT_CMD_PORT, 0x36); /* ch0, lobyte/hibyte, mode 3 */
+    outportb(PIT_CH0_PORT, (uint8_t)(divisor & 0xFFu));
+    outportb(PIT_CH0_PORT, (uint8_t)((divisor >> 8) & 0xFFu));
+}
 
-typedef struct {
-    char name[MAX_FILENAME_LENGTH];
-    int file_count;
-    File files[MAX_FILE_COUNT];
-} Directory;
-
-Directory root_directory;
-char command_history[MAX_HISTORY][255];
-int history_count = 0;
-int current_history_index = 0;
-
-void add_to_history(const char *command) {
-    if (strlen(command) > 0) {
-        strcpy(command_history[history_count % MAX_HISTORY], command);
-        history_count++;
-        current_history_index = history_count;
+static void timer_handler(REGISTERS *r) {
+    (void)r;
+    g_timer_ticks++;
+    lwip_stack_poll();
+    usb_poll();
+    syscall_tty_irq_poll();
+    scheduler_tick();
+    if (g_has_fb_console) {
+        fb_console_tick(g_timer_ticks);
+        fb_console_present();
     }
 }
 
-void scan(const char *shell, bool init_all) {
-    char new_buffer[255];
-    printf("%s", shell);
-    memset(new_buffer, 0, sizeof(new_buffer));
-    getstr_bound(new_buffer, strlen(shell));
-}
-
-void custom_strcpy(char *dest, const char *src) {
-    while (*src != '\0') {
-        *dest = *src;
-        src++;
-        dest++;
+static void ensure_default_system_files(void) {
+    static char tmp[256];
+    if (vfs_read_file("/etc/os-release", tmp, sizeof(tmp)) < 0) {
+        char content[160];
+        int n = 0;
+        const char *a = "NAME=EdgeOS\n";
+        const char *b = "VERSION=";
+        const char *c = "\n";
+        while (a[n]) { content[n] = a[n]; n++; }
+        for (int i = 0; b[i]; ++i) content[n++] = b[i];
+        for (int i = 0; g_edge_version[i]; ++i) content[n++] = g_edge_version[i];
+        for (int i = 0; c[i]; ++i) content[n++] = c[i];
+        content[n] = 0;
+        vfs_write_file("/etc/os-release", content, (uint32_t)n);
     }
-    *dest = '\0';
-}
-
-
-void removeFile(const char *filename) {
-    int found = 0;
-    for (int i = 0; i < root_directory.file_count; ++i) {
-        if (strcmp(root_directory.files[i].name, filename) == 0) {
-            found = 1;
-            for (int j = i; j < root_directory.file_count - 1; ++j) {
-                root_directory.files[j] = root_directory.files[j + 1];
-            }
-            root_directory.file_count--;
-            printf("File '%s' removed successfully.\n", filename);
-            break;
-        }
+    if (vfs_read_file("/etc/passwd", tmp, sizeof(tmp)) < 0) {
+        const char *pw =
+            "root:x:0:0:root:/root:/bin/sh\n"
+            "user:x:1000:1000:user:/home/user:/bin/sh\n";
+        vfs_write_file("/etc/passwd", pw, (uint32_t)strlen(pw));
     }
-    if (!found) {
-        printf("File '%s' not found.\n", filename);
+    if (vfs_read_file("/etc/group", tmp, sizeof(tmp)) < 0) {
+        const char *gr =
+            "root:x:0:\n"
+            "user:x:1000:user\n";
+        vfs_write_file("/etc/group", gr, (uint32_t)strlen(gr));
     }
-}
-
-void __cpuid(uint32 type, uint32 *eax, uint32 *ebx, uint32 *ecx, uint32 *edx) {
-    asm volatile("cpuid"
-                 : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
-                 : "0"(type));
-}
-
-int cpuid_info(int print) {
-    uint32 brand[12];
-    uint32 eax, ebx, ecx, edx;
-    uint32 type;
-
-    memset(brand, 0, sizeof(brand));
-    __cpuid(0x80000002, (uint32 *)brand + 0x0, (uint32 *)brand + 0x1, (uint32 *)brand + 0x2, (uint32 *)brand + 0x3);
-    __cpuid(0x80000003, (uint32 *)brand + 0x4, (uint32 *)brand + 0x5, (uint32 *)brand + 0x6, (uint32 *)brand + 0x7);
-    __cpuid(0x80000004, (uint32 *)brand + 0x8, (uint32 *)brand + 0x9, (uint32 *)brand + 0xa, (uint32 *)brand + 0xb);
-
-    if (print) {
-        printf("Brand: %s\n", (char *)brand);
-        for (type = 0; type < 4; type++) {
-            __cpuid(type, &eax, &ebx, &ecx, &edx);
-            printf("type:0x%x, eax:0x%x, ebx:0x%x, ecx:0x%x, edx:0x%x\n", type, eax, ebx, ecx, edx);
-        }
+    if (vfs_read_file("/etc/shadow", tmp, sizeof(tmp)) < 0) {
+        const char *sh =
+            "root:$6$edgeos$fBGq3tzKqj1d/Mx7YFi1bR0TF0bggz7XwW6PBmucCNFAQA97VvO95xxyFBL4ENOhKcdxohhDO99GCByHvdluA.:0:0:99999:7:::\n"
+            "user:$6$edgeos$Bo9eqxKWhKDkW8Uee.aPu4XIwP8kJ0/xeJ5.D325Br2wlNQockexTBvW1/bKqmbY7PVHYvloDdO1SyY8VJbA10:0:0:99999:7:::\n";
+        vfs_write_file("/etc/shadow", sh, (uint32_t)strlen(sh));
     }
-
-    if (strstr((char *)brand, "QEMU") != NULL)
-        return BRAND_QEMU;
-
-    return BRAND_VBOX;
+    (void)vfs_mkdir("/home");
+    (void)vfs_mkdir("/home/user");
 }
 
-BOOL is_echo(char *b) {
-    if ((b[0] == 'e') && (b[1] == 'c') && (b[2] == 'h') && (b[3] == 'o'))
-        if (b[4] == ' ' || b[4] == '\0')
-            return TRUE;
-    return FALSE;
-}
-
-void shutdown() {
-    int brand = cpuid_info(0);
-    if (brand == BRAND_QEMU)
-        outports(0x604, 0x2000);
-    else
-        outports(0x4004, 0x3400);
-}
-
-void unameCommand(const char *arg) {
-    if (arg == NULL || strcmp(arg, "") == 0) {
-        printf("EdgeOS\n");
-    } else if (strcmp(arg, "-a") == 0) {
-        printf("EdgeOS localhost %s %s x86 EdgeOS Kernel\n", VERSION, COMPILE_TIME);
-    } else {
-        printf("Invalid argument for uname: %s\n", arg);
+static void ensure_default_dev_entries(void) {
+    static const char *chr_nodes[] = {
+        "/dev/console", "/dev/tty", "/dev/tty0", "/dev/tty1", "/dev/tty2",
+        "/dev/tty3", "/dev/tty4", "/dev/null", "/dev/zero", "/dev/random",
+        "/dev/urandom", "/dev/fb0", "/dev/ptmx"
+    };
+    for (int i = 0; i < (int)(sizeof(chr_nodes) / sizeof(chr_nodes[0])); ++i) {
+        (void)vfs_touch(chr_nodes[i]);
+    }
+    for (int i = 0; i < block_count(); ++i) {
+        block_device_t *b = block_get(i);
+        char path[32];
+        int p = 0;
+        if (!b || !b->present) continue;
+        path[p++] = '/'; path[p++] = 'd'; path[p++] = 'e'; path[p++] = 'v'; path[p++] = '/';
+        for (int j = 0; b->name[j] && p < (int)sizeof(path) - 1; ++j) path[p++] = b->name[j];
+        path[p] = 0;
+        (void)vfs_touch(path);
     }
 }
 
-void new_kernel_instance(char *cmd_to_run) {
-    printf("\nRunning Command/Program '%s' in Quantum instance...\n\n", cmd_to_run);
-    printf("Command '%s' not found!!\n", cmd_to_run);
-}
-
-void vim() {
-    char name[255];
-    const char *shell_file = "File Name> ";
-    printf("%s", shell_file);
-    memset(name, 0, sizeof(name));
-    getstr_bound(name, strlen(shell_file));
-    printf("Edge VIM Editor\n\n");
-    printf_color(COLOR_GREEN, "EXIT(.q vim)\n");
-
-    char file_content[255];
-    const char *shell_file_content = "> ";
-
-    while (1) {
-        if (strcmp(file_content, ".q vim") == 0) {
-            main_loop();
-        } else {
-            printf("%s", shell_file_content);
-            memset(file_content, 0, sizeof(file_content));
-            getstr_bound(file_content, strlen(shell_file_content));
-        }
-    }
-
-    createFile(name, file_content);
-}
-
-void boot() {
-    char buffer[255];
-    gdt_init();
-    idt_init();
-
-    console_init(COLOR_WHITE, COLOR_BLUE);
-    keyboard_init();
-    printf("EdgeOS Operating System\n");
-    printf("\n");
-    printf("Loading Kernel...\n");
-
-    for (volatile int i = 0; i < 200000000; i++);
-
-    main_loop();
-}
-
-void calculator() {
-    char input[255];
-    const char *prompt = "Enter calculation (e.g., 3 + 4) or type 'exit' to quit: ";
-    int num1, num2, result;
-    char operator;
-
-    while (1) {
-        printf("%s", prompt);
-        memset(input, 0, sizeof(input));
-        getstr_bound(input, strlen(prompt));
-
-        if (strcmp(input, "exit") == 0) {
-            break;
-        }
-
-        if (sscanf(input, "%d %c %d", &num1, &operator, &num2) == 3) {
-            switch (operator) {
-                case '+':
-                    result = num1 + num2;
-                    break;
-                case '-':
-                    result = num1 - num2;
-                    break;
-                case '*':
-                    result = num1 * num2;
-                    break;
-                case '/':
-                    if (num2 != 0) {
-                        result = num1 / num2;
-                    } else {
-                        printf("Error: Division by zero.\n");
-                        continue;
-                    }
-                    break;
-                default:
-                    printf("Error: Unknown operator '%c'.\n", operator);
-                    continue;
-            }
-            printf("Result: %d\n", result);
-        } else {
-            printf("Error: Invalid format. Please use 'number operator number'.\n");
-        }
-    }
-}
-
-void getstr_bound_shell(char *buffer, uint8 bound) {
-    if (!buffer) return;
-    uint8 i = 0;
-    int c;
-
-    while (1) {
-        c = kb_getchar();
-
-        if (c == '\n') {
-            printf("\n");
-            buffer[i] = '\0';
-            add_to_history(buffer);
-            return;
-        } else if (c == '\b') {
-            if (i > 0) {
-                console_ungetchar();
-                i--;
-            }
-        } else {
-            if (i < bound - 1) {
-                buffer[i++] = c;
-                console_putchar(c);
-            }
-        }
-    }
-}
-
-
-
-void main_loop() {
-    char buffer[255];
-    const char *shell_root = "root";
-    const char *shell_at = "@";
-    const char *shell_edgeos = "edgeos";
-    const char *shell_prompt = "~$ ";
-    gdt_init();
-    idt_init();
-    initFileSystem();
-
+void kmain(uint32_t magic, void *mb_info) {
+    printf("[boot] magic=0x%x mb_info=0x%x\n", magic, (uint32_t)(uintptr_t)mb_info);
+    int has_fb = fb_init_from_multiboot2(mb_info) ? 1 : 0;
+    g_has_fb_console = has_fb;
+    if (has_fb) console_set_backend(&FB_CONSOLE);
+    else console_set_backend(&VGA_CONSOLE);
     console_init(COLOR_WHITE, COLOR_BLACK);
+    console_clear(COLOR_WHITE, COLOR_BLACK);
+
+    boottime_init();
+    bootlog_stage("Initializing GDT");
+
+    gdt_init();
+    bootlog_stage("Initializing IDT");
+    idt_init();
+    bootlog_stage("Initializing keyboard");
     keyboard_init();
+    isr_register_interrupt_handler(IRQ_BASE + 0, timer_handler);
+    pit_set_rate(KERNEL_TIMER_HZ);
+    bootlog_stage("Initializing syscalls");
+    syscall_init();
+    __asm__ __volatile__("sti");
+    bootlog_stage("Initializing memory");
+    meminfo_init(magic, mb_info);
+    bootlog_stage("Detecting block devices");
+    dev_init(magic, mb_info);
+    bootlog_stage("Initializing network");
+    e1000_init();
+    lwip_stack_init();
+    bootlog_stage("Initializing USB");
+    usb_init();
+    bootlog_stage("Initializing VFS");
+    vfs_init();
 
-    printf("Welcome to EdgeOS %s\n", VERSION);
-    printf("Type 'help' for a list of commands.\n");
+    bootlog_stage("Mounting root filesystem");
+    {
+        const char *candidates[4];
+        int n = 0;
+        int mounted = 0;
 
-    while (1) {
+        if (block_find("ram0")) candidates[n++] = "ram0";
+        if (block_find("sda1")) candidates[n++] = "sda1";
+        if (block_find("sda")) candidates[n++] = "sda";
+        if (block_find("hda")) candidates[n++] = "hda";
 
-        printf_color(COLOR_BLUE, shell_root);
-        printf_color(COLOR_WHITE, shell_at);
-        printf_color(COLOR_GREEN, shell_edgeos);
-        printf_color(COLOR_WHITE, shell_prompt);
-
-        memset(buffer, 0, sizeof(buffer));
-
-        getstr_bound_shell(buffer, sizeof(buffer));
-
-        if (strlen(buffer) == 0)
-            continue;
-
-        if (strcmp(buffer, "cpuid") == 0) {
-            cpuid_info(1);
-        } else if (strcmp(buffer, "help") == 0) {
-            printf("EdgeOS Operating System\n");
-            printf("Commands:\n\n"
-                   " help\n"
-                   " cpuid\n"
-                   " clear\n"
-                   " uname [-a]\n"
-                   " touch <filename>\n"
-                   " ls\n"
-                   " cat <filename> (Show file content)\n"
-                   " rm <filename>\n"
-                   " whoami\n"
-                   " echo\n"
-                   " exec (Execute a file/program)\n"
-                   " shutdown\n\n");
-
-            printf("Important Info: 'MAX FILES: 100', 'MAX FILE CONTENT: 10,000'\n\n");
-        } else if (strncmp(buffer, "touch ", 6) == 0) {
-            char *filename = buffer + 6;
-            char file_content[255];
-            const char *shell_file_content = "File Content> ";
-            printf("%s", shell_file_content);
-            memset(file_content, 0, sizeof(file_content));
-            getstr_bound(file_content, strlen(shell_file_content));
-            createFile(filename, file_content);
-        } else if (strncmp(buffer, "rm ", 3) == 0) {
-            char *filename = buffer + 3;
-            removeFile(filename);
-        } else if (strcmp(buffer, "ls") == 0) {
-            listFiles();
-        } else if (strncmp(buffer, "cat ", 4) == 0) {
-            char *filename = buffer + 4;
-            fat_catFile(filename);
-        } else if (strncmp(buffer, "uname", 5) == 0) {
-            char *arg = buffer + 5;
-            while (*arg == ' ') arg++;
-            unameCommand(arg);
-        } else if (strcmp(buffer, "exec") == 0) {
-            char program_name[255];
-            const char *prompt = "Run a Program> ";
-            printf("Available Programs/Commands to execute:\n");
-            printf_color(COLOR_GREEN, " - VIM (Text Editor)\n - calc (Simple Calculator)\n\n");
-
-            printf("%s", prompt);
-            memset(program_name, 0, sizeof(program_name));
-            getstr_bound(program_name, strlen(prompt));
-            if (strcmp(program_name, "vim") == 0) {
-                vim();
-            } else if (strcmp(program_name, "calc") == 0) {
-                calculator();
-            } else {
-                printf("ERROR: Command '%s' not found :(\n\n");
+        for (int i = 0; i < n && !mounted; ++i) {
+            printf("[fs] trying ext4 mount on /dev/%s\n", candidates[i]);
+            if (ext4_mount(candidates[i], "/") == 0) {
+                mounted = 1;
+                break;
             }
-        } else if (strcmp(buffer, "whoami") == 0) {
-            printf("root\n");
-        } else if (strcmp(buffer, "clear") == 0) {
-            console_clear(COLOR_WHITE, COLOR_BLACK);
-        } else if (is_echo(buffer)) {
-            printf("%s\n", buffer + 5);
-        } else if (strcmp(buffer, "shutdown") == 0) {
-            shutdown();
-        } else {
-            printf("%s: command not found\n", buffer);
+            printf("[fs] trying ext2 mount on /dev/%s\n", candidates[i]);
+            if (ext2_mount(candidates[i], "/") == 0) mounted = 1;
+        }
+
+        if (!mounted) {
+            printf("[fs] ext2 mount failed, falling back to mem fs\n");
+            vfs_mount("mem", "/", "fat32");
         }
     }
-}
+    vfs_mkdir("/etc");
+    vfs_mkdir("/root");
+    vfs_mkdir("/boot");
+    vfs_mkdir("/dev");
+    vfs_mkdir("/dev/pts");
+    vfs_mkdir("/mnt");
+    vfs_mkdir("/lib");
+    vfs_mkdir("/proc");
+    (void)vfs_mount("proc", "/proc", "proc");
+    if (vfs_read_file("/etc/hostname", (char[8]){0}, 1) < 0) {
+        (void)vfs_write_file("/etc/hostname", "edgeos\n", 7);
+    }
+    (void)lwip_stack_reload_system_config();
+    /* Do not mutate rootfs before launching init. On LiveCD/ramdisk this can
+     * destabilize startup if userspace image is not expecting writes yet. */
 
-void kmain() {
-    boot();
+    process_init();
+
+    bootlog_stage("INIT: Starting /sbin/init");
+    {
+        char *init_argv[] = { "init", 0 };
+        int init_pid = process_spawn_exec("/sbin/init", 1, init_argv);
+        if (init_pid < 0) {
+            printf("[init] /sbin/init missing, trying /bin/edgebox\n");
+            char *edgebox_argv[] = { "edgebox", 0 };
+            init_pid = process_spawn_exec("/bin/edgebox", 1, edgebox_argv);
+        }
+
+        if (init_pid < 0) {
+            printf("[init] failed to spawn init process\n");
+            for (;;) __asm__ __volatile__("hlt");
+        }
+
+        for (;;) {
+            int status = 0;
+            
+            int child = process_wait_any(&status);
+            
+            if (child > 0) {
+                printf("[init] reaped pid=%d status=%d\n", child, status);
+
+                if (child == init_pid) {
+                    printf("[init] init exited, restarting /sbin/init\n");
+                    init_pid = process_spawn_exec("/sbin/init", 1, init_argv);
+                    if (init_pid < 0) {
+                        printf("[init] restart /sbin/init failed, trying /bin/edgebox\n");
+                        char *edgebox_argv[] = { "edgebox", 0 };
+                        init_pid = process_spawn_exec("/bin/edgebox", 1, edgebox_argv);
+                    }
+                }
+
+                continue;
+            }
+            
+            __asm__ __volatile__("sti; hlt");
+        }
+    }
 }

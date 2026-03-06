@@ -1,7 +1,9 @@
 section .text
-    global load_idt
+bits 64
+global load_idt
 
 load_idt:
-    mov eax, [esp + 4]
-    lidt [eax]
+    lidt [rdi]
     ret
+
+section .note.GNU-stack noalloc noexec nowrite progbits

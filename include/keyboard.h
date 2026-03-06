@@ -1,6 +1,8 @@
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
+#include <stdint.h>
+
 #define KEYBOARD_DATA_PORT      0x60
 #define KEYBOARD_STATUS_PORT    0x64
 #define KEYBOARD_COMMAND_PORT   0x64
@@ -38,6 +40,7 @@
 #define SCAN_CODE_KEY_SQUARE_CLOSE_BRACKET         0x1B
 #define SCAN_CODE_KEY_ENTER         0x1C
 #define SCAN_CODE_KEY_LEFT_CTRL         0x1D
+#define SCAN_CODE_KEY_RIGHT_CTRL        0x1D
 #define SCAN_CODE_KEY_A         0x1E
 #define SCAN_CODE_KEY_S         0x1F
 #define SCAN_CODE_KEY_D         0x20
@@ -104,5 +107,19 @@ char kb_getchar();
 // a blocking scan code read
 char kb_get_scancode();
 
-#endif
+int kb_read_event(char *ch, char *scan, int blocking);
 
+int keyboard_getchar(void);
+int keyboard_pollchar(void);
+int keyboard_haschar(void);
+int keyboard_mouse_pending(void);
+int keyboard_mouse_read(char *out, uint32_t max, int blocking);
+int keyboard_mouse_event_pending(void);
+int keyboard_mouse_event_read(char *out, uint32_t max, int blocking);
+void keyboard_mouse_emit_packet(int dx, int dy, uint8_t buttons);
+void keyboard_mouse_emit_packet_ex(int dx, int dy, int wheel, uint8_t buttons, int wheel_present);
+uint32_t keyboard_take_sigint_pending(void);
+uint64_t keyboard_entropy_irq_count(void);
+uint64_t keyboard_entropy_last_tsc(void);
+
+#endif

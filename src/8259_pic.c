@@ -39,6 +39,11 @@ void pic8259_init() {
     // restore the mask registers
     outportb(PIC1_DATA, a1);
     outportb(PIC2_DATA, a2);
+
+    // Unmask IRQ0 (timer) and IRQ1 (keyboard)
+    outportb(PIC1_DATA, 0xFC);
+    outportb(PIC2_DATA, 0xFF);
+
 }
 
 /**
@@ -50,3 +55,18 @@ void pic8259_eoi(uint8 irq) {
     outportb(PIC1, PIC_EOI);
 }
 
+void pic8259_unmask_irq(uint8 irq_line) {
+    if (irq_line < 8) {
+        uint8 mask = inportb(PIC1_DATA);
+        mask = (uint8)(mask & ~(1u << irq_line));
+        outportb(PIC1_DATA, mask);
+    } else if (irq_line < 16) {
+        uint8 slave = (uint8)(irq_line - 8u);
+        uint8 mask2 = inportb(PIC2_DATA);
+        uint8 mask1 = inportb(PIC1_DATA);
+        mask2 = (uint8)(mask2 & ~(1u << slave));
+        mask1 = (uint8)(mask1 & ~(1u << 2)); /* ensure cascade enabled */
+        outportb(PIC2_DATA, mask2);
+        outportb(PIC1_DATA, mask1);
+    }
+}

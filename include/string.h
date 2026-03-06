@@ -6,8 +6,9 @@
 void *memset(void *dst, char c, uint32 n);
 
 void *memcpy(void *dst, const void *src, uint32 n);
+void *memmove(void *dst, const void *src, uint32 n);
 
-int memcmp(uint8 *s1, uint8 *s2, uint32 n);
+int memcmp(const void *s1, const void *s2, uint32 n);
 
 int strlen(const char *s);
 
@@ -29,7 +30,7 @@ void itoa(char *buf, int base, int d);
 char *strstr(const char *in, const char *str);
 
 char *strncpy(char *dest, const char *src, size_t n);
+int atoi(const char *s);
 
 
 #endif
-

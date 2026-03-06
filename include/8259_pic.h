@@ -29,6 +29,6 @@ void pic8259_init();
  * send end of interrupt command to PIC 8259
  */
 void pic8259_eoi(uint8 irq);
+void pic8259_unmask_irq(uint8 irq_line);
 
 #endif
-

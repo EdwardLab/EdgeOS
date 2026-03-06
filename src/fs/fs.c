@@ -1,12 +1,12 @@
 #include <string.h>
 #include <stdint.h>
-#include <stdio.h>
 #include "fs.h"
+#include "console.h"
 uint16_t get_fat_entry(uint16_t cluster);
 
 #define SECTOR_SIZE 512
-#define MAX_FILENAME_LENGTH 11 // 8.3 format
-#define MAX_FILE_COUNT 224 // Maximum number of files supported in the root directory
+#define FAT_MAX_FILENAME_LENGTH 11 // 8.3 format
+#define FAT_MAX_FILE_COUNT 224 // Maximum number of files supported in the root directory
 
 // FAT12 Disk Layout
 #define BOOT_SECTOR_SIZE 1
@@ -15,7 +15,7 @@ uint16_t get_fat_entry(uint16_t cluster);
 #define ROOT_DIR_SIZE 14 // Number of sectors in the root directory
 
 typedef struct {
-    char name[MAX_FILENAME_LENGTH];
+    char name[FAT_MAX_FILENAME_LENGTH];
     uint8_t attr; // File attributes (read-only, hidden, system, etc.)
     uint8_t reserved[10];
     uint16_t time; // Last modification time
@@ -27,7 +27,7 @@ typedef struct {
 typedef struct {
     uint8_t boot_sector[SECTOR_SIZE];
     uint8_t fat[FAT_COUNT][FAT_SIZE * SECTOR_SIZE];
-    DirectoryEntry root_directory[MAX_FILE_COUNT];
+    DirectoryEntry root_directory[FAT_MAX_FILE_COUNT];
     uint8_t data_area[2880 - (BOOT_SECTOR_SIZE + FAT_COUNT * FAT_SIZE + ROOT_DIR_SIZE)][SECTOR_SIZE];
 } FAT12FileSystem;
 

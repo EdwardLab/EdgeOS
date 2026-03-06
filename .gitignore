@@ -1,0 +1,83 @@
+# =========================
+# Build output
+# =========================
+
+/obj/
+/out/
+
+# Kernel binaries
+*.bin
+*.iso
+*.img
+*.elf
+*.map
+
+# Object & dependency files
+*.o
+*.d
+
+# Static / shared libs (if ever added)
+*.a
+*.so
+
+# Userspace build artifacts
+userspace/**/cat
+userspace/**/cd
+userspace/**/cpuid
+userspace/**/df
+userspace/**/echo
+userspace/**/free
+userspace/**/help
+userspace/**/ls
+userspace/**/mkdir
+userspace/**/mount
+userspace/**/pwd
+userspace/**/rm
+userspace/**/shutdown
+userspace/**/touch
+userspace/**/uname
+userspace/**/whoami
+userspace/**/init
+
+# Rootfs generated files
+rootfs.img
+
+# =========================
+# QEMU / runtime
+# =========================
+
+*.log
+*.qcow2
+*.vdi
+*.vmdk
+*.core
+
+# =========================
+# Node (if used)
+# =========================
+
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# =========================
+# Editor / OS junk
+# =========================
+
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# JetBrains
+.idea/
+
+# Vim
+*.swp
+*.swo
+
+# Backup files
+*~
+
+tools/rootfs/rootfs_override/lib
